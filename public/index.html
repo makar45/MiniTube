@@ -1,82 +1,121 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>MiniTube</title>
-  <style>
-    body { font-family: sans-serif; margin: 20px; }
-    video { width: 400px; display: block; margin-bottom: 10px; }
-    .video-block { border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; }
-  </style>
+<meta charset="UTF-8">
+<title>MiniTube</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+  header { display: flex; justify-content: space-between; align-items: center; background: #ff0000; color: white; padding: 10px 20px; }
+  header h1 { margin: 0; font-size: 20px; }
+  button { cursor: pointer; }
+  #uploadModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+  #uploadModal .modal-content { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; }
+  .video-block { background: white; margin: 15px; padding: 10px; border-radius: 8px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+  video { width: 100%; border-radius: 8px; }
+  input, textarea { width: 100%; margin: 5px 0; padding: 5px; }
+  .btn-main, .btn-upload { background: white; border: none; padding: 8px 12px; border-radius: 5px; margin-left: 5px; }
+  .btn-main:hover, .btn-upload:hover { background: #eee; }
+</style>
 </head>
 <body>
+
+<header>
   <h1>MiniTube</h1>
+  <div>
+    <button class="btn-main" onclick="loadVideos()">Главная</button>
+    <button class="btn-upload" onclick="showUpload()">+</button>
+  </div>
+</header>
 
-  <form id="uploadForm" enctype="multipart/form-data">
-    <input type="text" name="title" placeholder="Название видео" required>
-    <input type="file" name="file" accept="video/*" required>
-    <button type="submit">Загрузить</button>
-  </form>
+<div id="uploadModal">
+  <div class="modal-content">
+    <h2>Загрузить видео</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="text" name="title" placeholder="Название видео" required>
+      <input type="file" name="file" accept="video/*" required>
+      <button type="submit">Загрузить</button>
+    </form>
+    <button onclick="hideUpload()">Отмена</button>
+  </div>
+</div>
 
-  <div id="videos"></div>
+<div id="videos"></div>
 
-  <script>
-    const form = document.getElementById("uploadForm");
-    const videosDiv = document.getElementById("videos");
+<script>
+const uploadModal = document.getElementById("uploadModal");
+const form = document.getElementById("uploadForm");
+const videosDiv = document.getElementById("videos");
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const formData = new FormData(form);
-      const res = await fetch("/api/videos", { method: "POST", body: formData });
-      const video = await res.json();
-      form.reset();
-      renderVideo(video);
+function showUpload() { uploadModal.style.display = "flex"; }
+function hideUpload() { uploadModal.style.display = "none"; }
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const formData = new FormData(form);
+  const fileInput = form.querySelector('input[type="file"]');
+  if(!fileInput.files.length) return alert("Выберите видео!");
+  const titleInput = form.querySelector('input[name="title"]');
+  if(!titleInput.value.trim()) return alert("Введите название!");
+  
+  try {
+    const res = await fetch("/api/videos", { method: "POST", body: formData });
+    const video = await res.json();
+    renderVideo(video);
+    hideUpload();
+    form.reset();
+  } catch(err) { alert("Ошибка загрузки: "+err.message); }
+});
+
+async function loadVideos() {
+  try {
+    const res = await fetch("/api/videos");
+    const videos = await res.json();
+    videosDiv.innerHTML = "";
+    videos.forEach(renderVideo);
+  } catch(err) { console.log(err); }
+}
+
+function renderVideo(video) {
+  const div = document.createElement("div");
+  div.className = "video-block";
+  div.innerHTML = `
+    <h3>${video.title}</h3>
+    <video src="${video.url}" controls></video>
+    <p>Likes: <span id="likes-${video.id}">${video.likes}</span> <button onclick="likeVideo(${video.id})">❤️</button></p>
+    <textarea id="comment-${video.id}" placeholder="Комментарий"></textarea>
+    <button onclick="addComment(${video.id})">Добавить</button>
+    <div id="comments-${video.id}">${video.comments.map(c => `<p>${c}</p>`).join("")}</div>
+  `;
+  videosDiv.prepend(div);
+}
+
+async function likeVideo(id) {
+  try {
+    const res = await fetch(`/api/like/${id}`, { method: "POST" });
+    const data = await res.json();
+    document.getElementById(`likes-${id}`).textContent = data.likes;
+  } catch(err) { console.log(err); }
+}
+
+async function addComment(id) {
+  const text = document.getElementById(`comment-${id}`).value;
+  if (!text.trim()) return;
+  try {
+    const res = await fetch(`/api/comment/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
     });
+    const comments = await res.json();
+    document.getElementById(`comments-${id}`).innerHTML = comments.map(c => `<p>${c}</p>`).join("");
+    document.getElementById(`comment-${id}`).value = "";
+  } catch(err) { console.log(err); }
+}
 
-    async function loadVideos() {
-      const res = await fetch("/api/videos");
-      const videos = await res.json();
-      videosDiv.innerHTML = "";
-      videos.forEach(renderVideo);
-    }
+// Загрузка видео при старте
+loadVideos();
+</script>
 
-    function renderVideo(video) {
-      const div = document.createElement("div");
-      div.className = "video-block";
-      div.innerHTML = `
-        <h3>${video.title}</h3>
-        <video src="${video.url}" controls></video>
-        <p>Likes: <span id="likes-${video.id}">${video.likes}</span> 
-        <button onclick="likeVideo(${video.id})">❤️</button></p>
-        <input type="text" id="comment-${video.id}" placeholder="Комментарий">
-        <button onclick="addComment(${video.id})">Добавить</button>
-        <div id="comments-${video.id}">
-          ${video.comments.map(c => `<p>${c}</p>`).join("")}
-        </div>
-      `;
-      videosDiv.prepend(div);
-    }
-
-    async function likeVideo(id) {
-      const res = await fetch(`/api/like/${id}`, { method: "POST" });
-      const data = await res.json();
-      document.getElementById(`likes-${id}`).textContent = data.likes;
-    }
-
-    async function addComment(id) {
-      const text = document.getElementById(`comment-${id}`).value;
-      if (!text) return;
-      const res = await fetch(`/api/comment/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
-      });
-      const comments = await res.json();
-      document.getElementById(`comments-${id}`).innerHTML = comments.map(c => `<p>${c}</p>`).join("");
-      document.getElementById(`comment-${id}`).value = "";
-    }
-
-    loadVideos();
-  </script>
 </body>
 </html>
