@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>MiniTube</title>
+  <style>
+    body { font-family: Arial; margin: 0; background: #111; color: #fff; }
+    header { padding: 10px; background: #202020; text-align: center; }
+    button { padding: 10px; margin: 5px; }
+    input { padding: 8px; width: 90%; margin: 5px; }
+    .video { border-bottom: 1px solid #333; padding: 10px; }
+    iframe { width: 100%; height: 200px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>MiniTube</h2>
+</header>
+
+<div id="upload">
+  <input id="title" placeholder="Название видео">
+  <input id="url" placeholder="Ссылка на видео (YouTube)">
+  <button onclick="upload()">➕ Выложить</button>
+</div>
+
+<div id="videos"></div>
+
+<script>
+async function load() {
+  const res = await fetch("/api/videos");
+  const videos = await res.json();
+  const div = document.getElementById("videos");
+  div.innerHTML = "";
+
+  videos.reverse().forEach(v => {
+    div.innerHTML += `
+      <div class="video">
+        <h3>${v.title}</h3>
+        <iframe src="${v.url}" allowfullscreen></iframe>
+        <button onclick="like(${v.id})">👍 ${v.likes}</button>
+      </div>
+    `;
+  });
+}
+
+async function upload() {
+  await fetch("/api/videos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: title.value,
+      url: url.value
+    })
+  });
+  load();
+}
+
+async function like(id) {
+  await fetch("/api/like/" + id, { method: "POST" });
+  load();
+}
+
+load();
+</script>
+
+</body>
+</html>
