@@ -1,23 +1,21 @@
+// server.js
 const express = require("express");
-const app = express();
 const supabase = require("./supabaseClient");
 const multer = require("multer");
+const upload = multer({ storage: multer.memoryStorage() });
+const path = require("path");
 
-// Настройка multer для памяти (Render не даст хранить файлы локально)
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.static("public"));
-
+// Храним видео в памяти (можно заменить на базу позже)
 let videos = [];
 
-// Получить список видео
-app.get("/api/videos", (req, res) => {
-  res.json(videos);
-});
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, "public")));
 
-// Загрузка видео через файл
+// Загрузка видео
 app.post("/api/videos", upload.single("file"), async (req, res) => {
   const { title } = req.body;
   const file = req.file;
@@ -27,22 +25,20 @@ app.post("/api/videos", upload.single("file"), async (req, res) => {
   const { data, error } = await supabase.storage
     .from("videos")
     .upload(`${Date.now()}_${file.originalname}`, file.buffer, {
-      contentType: file.mimetype
+      contentType: file.mimetype,
+      upsert: false,
     });
 
   if (error) return res.status(500).json({ error: error.message });
 
-  const url = supabase
-    .storage
-    .from("videos")
-    .getPublicUrl(data.path).publicURL;
+  const url = supabase.storage.from("videos").getPublicUrl(data.path).publicURL;
 
   const video = {
     id: Date.now(),
     title,
     url,
     likes: 0,
-    comments: []
+    comments: [],
   };
 
   videos.push(video);
@@ -51,19 +47,25 @@ app.post("/api/videos", upload.single("file"), async (req, res) => {
 
 // Лайки
 app.post("/api/like/:id", (req, res) => {
-  const video = videos.find(v => v.id == req.params.id);
-  if (!video) return res.sendStatus(404);
-  video.likes++;
-  res.json({ likes: video.likes });
+  const vid = videos.find(v => v.id == req.params.id);
+  if (!vid) return res.status(404).json({ error: "Видео не найдено" });
+  vid.likes++;
+  res.json({ likes: vid.likes });
 });
 
-// Комментарии
+// Комменты
 app.post("/api/comment/:id", (req, res) => {
-  const video = videos.find(v => v.id == req.params.id);
-  if (!video) return res.sendStatus(404);
-  video.comments.push(req.body.text);
-  res.json(video.comments);
+  const vid = videos.find(v => v.id == req.params.id);
+  if (!vid) return res.status(404).json({ error: "Видео не найдено" });
+  const { comment } = req.body;
+  if (!comment) return res.status(400).json({ error: "Нет комментария" });
+  vid.comments.push(comment);
+  res.json({ comments: vid.comments });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`MiniTube запущен на порту ${PORT}`));
+// Получить все видео
+app.get("/api/videos", (req, res) => {
+  res.json(videos);
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
