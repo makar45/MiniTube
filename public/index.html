@@ -4,65 +4,79 @@
   <meta charset="UTF-8">
   <title>MiniTube</title>
   <style>
-    body { font-family: Arial; margin: 0; background: #111; color: #fff; }
-    header { padding: 10px; background: #202020; text-align: center; }
-    button { padding: 10px; margin: 5px; }
-    input { padding: 8px; width: 90%; margin: 5px; }
-    .video { border-bottom: 1px solid #333; padding: 10px; }
-    iframe { width: 100%; height: 200px; }
+    body { font-family: sans-serif; margin: 20px; }
+    video { width: 400px; display: block; margin-bottom: 10px; }
+    .video-block { border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; }
   </style>
 </head>
 <body>
+  <h1>MiniTube</h1>
 
-<header>
-  <h2>MiniTube</h2>
-</header>
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="text" name="title" placeholder="Название видео" required>
+    <input type="file" name="file" accept="video/*" required>
+    <button type="submit">Загрузить</button>
+  </form>
 
-<div id="upload">
-  <input id="title" placeholder="Название видео">
-  <input id="url" placeholder="Ссылка на видео (YouTube)">
-  <button onclick="upload()">➕ Выложить</button>
-</div>
+  <div id="videos"></div>
 
-<div id="videos"></div>
+  <script>
+    const form = document.getElementById("uploadForm");
+    const videosDiv = document.getElementById("videos");
 
-<script>
-async function load() {
-  const res = await fetch("/api/videos");
-  const videos = await res.json();
-  const div = document.getElementById("videos");
-  div.innerHTML = "";
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const res = await fetch("/api/videos", { method: "POST", body: formData });
+      const video = await res.json();
+      form.reset();
+      renderVideo(video);
+    });
 
-  videos.reverse().forEach(v => {
-    div.innerHTML += `
-      <div class="video">
-        <h3>${v.title}</h3>
-        <iframe src="${v.url}" allowfullscreen></iframe>
-        <button onclick="like(${v.id})">👍 ${v.likes}</button>
-      </div>
-    `;
-  });
-}
+    async function loadVideos() {
+      const res = await fetch("/api/videos");
+      const videos = await res.json();
+      videosDiv.innerHTML = "";
+      videos.forEach(renderVideo);
+    }
 
-async function upload() {
-  await fetch("/api/videos", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: title.value,
-      url: url.value
-    })
-  });
-  load();
-}
+    function renderVideo(video) {
+      const div = document.createElement("div");
+      div.className = "video-block";
+      div.innerHTML = `
+        <h3>${video.title}</h3>
+        <video src="${video.url}" controls></video>
+        <p>Likes: <span id="likes-${video.id}">${video.likes}</span> 
+        <button onclick="likeVideo(${video.id})">❤️</button></p>
+        <input type="text" id="comment-${video.id}" placeholder="Комментарий">
+        <button onclick="addComment(${video.id})">Добавить</button>
+        <div id="comments-${video.id}">
+          ${video.comments.map(c => `<p>${c}</p>`).join("")}
+        </div>
+      `;
+      videosDiv.prepend(div);
+    }
 
-async function like(id) {
-  await fetch("/api/like/" + id, { method: "POST" });
-  load();
-}
+    async function likeVideo(id) {
+      const res = await fetch(`/api/like/${id}`, { method: "POST" });
+      const data = await res.json();
+      document.getElementById(`likes-${id}`).textContent = data.likes;
+    }
 
-load();
-</script>
+    async function addComment(id) {
+      const text = document.getElementById(`comment-${id}`).value;
+      if (!text) return;
+      const res = await fetch(`/api/comment/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      const comments = await res.json();
+      document.getElementById(`comments-${id}`).innerHTML = comments.map(c => `<p>${c}</p>`).join("");
+      document.getElementById(`comment-${id}`).value = "";
+    }
 
+    loadVideos();
+  </script>
 </body>
 </html>
